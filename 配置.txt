@@ -1,0 +1,14 @@
+vue3
+npm install axios
+pip install flask flask-cors mysql-connector-python werkzeug
+
+vscode配件--vue official
+
+运行前端：
+npm run serve
+
+运行后端：
+python app.py
+
+上传头像新增库：
+pip install pillow
