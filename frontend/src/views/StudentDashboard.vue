@@ -106,25 +106,35 @@
             <!-- 叠课申请按钮（放在选课页面搜索栏旁） -->
             <button @click="openOverlapDialog" style="margin-left:16px;">叠课申请</button>
           </div>
+          <!-- 课程列表表头和数据严格对齐，课程名后有“查看评课社区”按钮 -->
           <div class="account-list">
             <div class="account-item header-row">
               <span class="account-id">课程号</span>
               <span class="account-role">课程名</span>
-              <span class="account-role">学分</span>
-              <span class="account-role">上课地点</span>
-              <span class="account-role">上课时间</span>
-              <span class="account-role">任课教师</span>
-              <span class="account-role">选课人数/上限</span>
+              <span class="account-credit">学分</span>
+              <span class="account-location">上课地点</span>
+              <span class="account-time">上课时间</span>
+              <span class="account-teacher">任课教师</span>
+              <span class="account-num">选课人数/上限</span>
               <span class="account-action"></span>
             </div>
             <div v-for="item in courses" :key="item.course_id" class="account-item">
               <span class="account-id">{{ item.course_id }}</span>
-              <span class="account-role">{{ item.name }}</span>
-              <span class="account-role">{{ item.credit }}</span>
-              <span class="account-role">{{ item.location }}</span>
-              <span class="account-role cell-wrap">{{ item.time }}</span>
-              <span class="account-role">{{ getTeacherNames(item.teachers) }}</span>
-              <span class="account-role">{{ item.numStudents }} / {{ item.maxStudents }}</span>
+              <span class="account-role course-name-cell">
+                <span
+                  class="course-name-text"
+                  :title="item.name"
+                >{{ item.name }}</span>
+                <button
+                  class="community-btn"
+                  @click="viewCommunity(item.course_id)"
+                >查看评课社区</button>
+              </span>
+              <span class="account-credit">{{ item.credit }}</span>
+              <span class="account-location">{{ item.location }}</span>
+              <span class="account-time cell-wrap">{{ item.time }}</span>
+              <span class="account-teacher">{{ getTeacherNames(item.teachers) }}</span>
+              <span class="account-num">{{ item.numStudents }} / {{ item.maxStudents }}</span>
               <span class="account-action">
                 <button
                   v-if="!item.selected"
@@ -229,6 +239,22 @@
           <button class="conflict-btn" @click="showDropConfirm = false">取消</button>
           <button class="conflict-btn" style="background:#e74c3c;color:#fff;" @click="doDropCourse">确定退课</button>
         </div>
+      </div>
+    </div>
+
+    <!-- 评课社区弹窗 -->
+    <div v-if="showCommunityDialog" class="community-dialog-mask">
+      <div class="community-dialog">
+        <div class="community-dialog-header">
+          <span>评课社区</span>
+          <button class="community-dialog-close" @click="showCommunityDialog = false">×</button>
+        </div>
+        <iframe
+          v-if="communityUrl"
+          :src="communityUrl"
+          frameborder="0"
+          style="width:100%;height:calc(100% - 40px);border:none;border-radius:0 0 12px 12px;"
+        ></iframe>
       </div>
     </div>
   </div>
@@ -608,6 +634,20 @@ const doDropCourse = async () => {
   dropCourseId.value = ''
 }
 
+// 在 <script setup> 里添加：
+const showCommunityDialog = ref(false)
+const communityUrl = ref('')
+
+const viewCommunity = (course_id) => {
+  const course = courses.value.find(c => c.course_id === course_id)
+  if (!course) return
+  // 拼接课程名+教师名
+  const teacherNames = (course.teachers || []).map(t => t.name).join(' ')
+  const q = encodeURIComponent(`${course.name} ${teacherNames}`)
+  communityUrl.value = `https://icourse.club/search/?q=${q}`
+  showCommunityDialog.value = true
+}
+
 onMounted(() => {
   fetchStudentInfo()
   fetchCourses()
@@ -919,78 +959,60 @@ onMounted(() => {
 .account-item,
 .account-item.header-row {
   display: grid;
-  grid-template-columns: 120px 1fr 100px 120px 150px 1fr 150px auto;
+  grid-template-columns: 120px 220px 100px 120px 220px 180px 150px 120px;
   align-items: center;
   padding: 14px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-.account-role,
-.cell-wrap {
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-width: 180px;      
-  max-height: 48px;      
-  overflow-y: auto;
-  display: block;
 }
 .account-item.header-row {
   background: rgba(86, 174, 255, 0.1);
   font-weight: bold;
   color: #5dade2;
 }
-.account-action {
-  text-align: right;
+.account-id, .account-role, .account-credit, .account-location, .account-time, .account-teacher, .account-num, .account-action {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
 }
-.add-btn, .del-btn {
-  background: linear-gradient(90deg, #5dade2 0%, #90caf9 100%);
-  color: #232526;
-  border: none;
-  border-radius: 6px;
-  padding: 0 16px;
-  font-size: 16px;
-  cursor: pointer;
-  transition: background 0.2s;
-  font-weight: bold;
-  height: 36px;
-  line-height: 36px;
+.course-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   white-space: nowrap;
+  overflow: hidden;
+}
+.course-name-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
   display: inline-block;
 }
-.add-btn:hover, .del-btn:hover {
-  background: linear-gradient(90deg, #90caf9 0%, #5dade2 100%);
-  color: #232526;
-}
-.del-btn {
-  background: #ff7675;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 0 16px;
-  font-size: 16px;
+.community-btn {
+  padding: 2px 10px;
+  font-size: 13px;
+  border-radius: 4px;
+  background: #f5f6fa;
+  color: #1976d2;
+  border: 1px solid #90caf9;
   cursor: pointer;
-  transition: background 0.2s;
-  font-weight: bold;
-  height: 36px;
-  line-height: 36px;
+  margin-left: 6px;
+  transition: background 0.2s, color 0.2s;
   white-space: nowrap;
-  display: inline-block;
+  flex-shrink: 0;
 }
-.del-btn:hover {
-  background: #ff5252;
+.community-btn:hover {
+  background: #90caf9;
   color: #fff;
 }
-.empty-tip {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 18px 0;
-  color: #5dade2;
-  font-size: 18px;
-}
-.dialog-msg {
-  margin-top: 12px;
-  color: #5dade2;
-  font-size: 16px;
-  text-align: center;
+.cell-wrap {
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-width: 200px;
+  max-height: 48px;
+  overflow-y: auto;
+  display: block;
 }
 
 /* 课程表样式 */
@@ -1168,5 +1190,50 @@ tr.section-divider td {
 .conflict-btn:hover {
   background: #5dade2;
   color: #fff;
+}
+/* 在 <style scoped> 里添加： */
+.community-dialog-mask {
+  position: fixed;
+  left: 0; top: 0; right: 0; bottom: 0;
+  background: rgba(44,62,80,0.25);
+  z-index: 4000;
+  display: flex; align-items: center; justify-content: center;
+}
+.community-dialog {
+  width: 50vw;
+  height: 50vh;
+  min-width: 400px;
+  min-height: 300px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(44,62,80,0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.community-dialog-header {
+  height: 40px;
+  background: #5dade2;
+  color: #fff;
+  font-size: 18px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+}
+.community-dialog-close {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 26px;
+  font-weight: bold;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 8px;
+  transition: color 0.2s;
+}
+.community-dialog-close:hover {
+  color: #e74c3c;
 }
 </style>

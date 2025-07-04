@@ -1552,52 +1552,5 @@ const processOverlap = async (student_id, course_id, action) => {
 .small-btn:hover {
   background: #ff5252;
 }
-.conflict-dialog-mask, .dialog-mask {
-  position: fixed;
-  left: 0; top: 0; right: 0; bottom: 0;
-  background: rgba(44,62,80,0.25);
-  z-index: 3000;
-  display: flex; align-items: center; justify-content: center;
-}
-.conflict-dialog, .dialog {
-  background: #fff;
-  border-radius: 12px;
-  padding: 32px 40px 24px 40px;
-  box-shadow: 0 8px 32px rgba(44,62,80,0.18);
-  min-width: 320px;
-  min-height: 120px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.conflict-title {
-  font-size: 22px;
-  color: #e74c3c;
-  font-weight: bold;
-  margin-bottom: 18px;
-}
-.conflict-msg {
-  color: #232526;
-  font-size: 17px;
-  margin-bottom: 24px;
-}
-.conflict-actions {
-  display: flex;
-  gap: 24px;
-}
-.conflict-btn {
-  background: #e0e0e0;
-  color: #232526;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 28px;
-  font-size: 16px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: background 0.2s;
-}
-.conflict-btn:hover {
-  background: #5dade2;
-  color: #fff;
-}
+
 </style>
