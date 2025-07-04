@@ -81,5 +81,13 @@ CREATE TABLE student_course (
   FOREIGN KEY (course_id) REFERENCES course(course_id) ON DELETE CASCADE
 );
 
+-- 叠课申请表
+CREATE TABLE overlap_application (
+    student_id VARCHAR(32) NOT NULL,
+    course_id VARCHAR(32) NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    PRIMARY KEY (student_id, course_id)
+);
+
 INSERT INTO login_account (id, password, role)
 VALUES ('A001', 'scrypt:32768:8:1$1rVmpASOrfTegXNO$b7880e1506a74449809548266bb5cd1dd1adbac7dc2638bbb84f79ce5343f1c59e53b4d4fcdbc315c562909f75ab7385ea2a087b755c6cb1be1368c5c16dfef3', 'admin');

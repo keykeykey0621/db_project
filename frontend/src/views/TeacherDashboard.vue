@@ -95,6 +95,24 @@
           <div class="account-manage-header">
             <input v-model="courseSearchKeyword" @input="fetchCourses" placeholder="搜索课程..." class="search-input" />
             <button class="add-btn" @click="showAddCourseDialog = true">添加任课</button>
+            <!-- 叠课申请处理按钮（放在教师授课页面搜索栏旁或合适位置） -->
+            <button @click="openOverlapDialog" style="margin-left:16px;">叠课申请处理</button>
+          </div>
+          <!-- 叠课申请处理弹窗 -->
+          <div v-if="showOverlapDialog" class="dialog-mask">
+            <div class="dialog">
+              <h3>叠课申请处理</h3>
+              <div v-for="app in overlapApplications" :key="app.student_id + '-' + app.course_id" class="overlap-row">
+                <span>
+                  学生：{{ app.student_name }} | 课程：{{ app.course_name }}
+                </span>
+                <span>
+                  <button class="small-btn" @click="processOverlap(app.student_id, app.course_id, 'approve')">同意</button>
+                  <button class="small-btn" @click="processOverlap(app.student_id, app.course_id, 'reject')">拒绝</button>
+                </span>
+              </div>
+              <button @click="showOverlapDialog = false">关闭</button>
+            </div>
           </div>
           <div class="account-list">
             <!-- 表头 -->
@@ -999,6 +1017,27 @@ watch(currentHeadClass, (val) => {
     classStudents.value = []
   }
 })
+
+// 叠课申请处理相关
+const showOverlapDialog = ref(false)
+const overlapApplications = ref([])
+
+const openOverlapDialog = async () => {
+  const res = await axios.get('http://localhost:5000/api/teacher/overlap_applications', {
+    params: { teacher_id: userId }
+  })
+  if (res.data.success) overlapApplications.value = res.data.applications
+  showOverlapDialog.value = true
+}
+
+const processOverlap = async (student_id, course_id, action) => {
+  await axios.post('http://localhost:5000/api/teacher/process_overlap', {
+    student_id,
+    course_id,
+    action
+  })
+  openOverlapDialog()
+}
 </script>
 
 <style scoped>
@@ -1467,5 +1506,98 @@ watch(currentHeadClass, (val) => {
 }
 .avatar-cancel-btn:hover {
   color: #1976d2;
+}
+.overlap-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #2c3e50;
+}
+.small-btn {
+  background: linear-gradient(90deg, #5dade2 0%, #90caf9 100%);
+  color: #232526;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-weight: bold;
+  box-shadow: 0 2px 8px #2c3e50;
+}
+.small-btn:hover {
+  background: linear-gradient(90deg, #90caf9 0%, #5dade2 100%);
+  color: #232526;
+}
+.overlap-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  color: #555;
+  font-size: 16px;
+}
+.small-btn {
+  padding: 4px 14px;
+  font-size: 14px;
+  border-radius: 4px;
+  background: #ff7675;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  margin-left: 18px;
+  transition: background 0.2s;
+}
+.small-btn:hover {
+  background: #ff5252;
+}
+.conflict-dialog-mask, .dialog-mask {
+  position: fixed;
+  left: 0; top: 0; right: 0; bottom: 0;
+  background: rgba(44,62,80,0.25);
+  z-index: 3000;
+  display: flex; align-items: center; justify-content: center;
+}
+.conflict-dialog, .dialog {
+  background: #fff;
+  border-radius: 12px;
+  padding: 32px 40px 24px 40px;
+  box-shadow: 0 8px 32px rgba(44,62,80,0.18);
+  min-width: 320px;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.conflict-title {
+  font-size: 22px;
+  color: #e74c3c;
+  font-weight: bold;
+  margin-bottom: 18px;
+}
+.conflict-msg {
+  color: #232526;
+  font-size: 17px;
+  margin-bottom: 24px;
+}
+.conflict-actions {
+  display: flex;
+  gap: 24px;
+}
+.conflict-btn {
+  background: #e0e0e0;
+  color: #232526;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 28px;
+  font-size: 16px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+.conflict-btn:hover {
+  background: #5dade2;
+  color: #fff;
 }
 </style>

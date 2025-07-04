@@ -103,6 +103,8 @@
               <input type="checkbox" v-model="onlyShowSelected" @change="fetchCoursesDebounced" id="onlyShowSelected" />
               <label for="onlyShowSelected" style="margin-left:4px;cursor:pointer;">只看已选课程</label>
             </div>
+            <!-- 叠课申请按钮（放在选课页面搜索栏旁） -->
+            <button @click="openOverlapDialog" style="margin-left:16px;">叠课申请</button>
           </div>
           <div class="account-list">
             <div class="account-item header-row">
@@ -133,7 +135,7 @@
                 <button
                   v-else
                   class="del-btn"
-                  @click="dropCourse(item.course_id)"
+                  @click="confirmDropCourse(item.course_id)"
                 >退课</button>
               </span>
             </div>
@@ -187,6 +189,48 @@
         </div>
       </transition>
     </main>
+
+    <!-- 冲突弹窗 -->
+    <div v-if="showConflictDialog" class="conflict-dialog-mask">
+      <div class="conflict-dialog">
+        <div class="conflict-title">选课冲突提醒</div>
+        <div class="conflict-msg">该课程与您已选课程时间冲突，是否申请叠课？</div>
+        <div class="conflict-actions">
+          <button class="conflict-btn" @click="showConflictDialog = false">关闭</button>
+          <button class="conflict-btn" @click="applyOverlap" style="background:#5dade2;color:#fff;">申请叠课</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 我的叠课申请弹窗 -->
+    <div v-if="showOverlapDialog" class="dialog-mask">
+      <div class="dialog">
+        <h3>我的叠课申请</h3>
+        <div v-for="app in overlapApplications" :key="app.course_id" class="overlap-row">
+          <span>
+            课程：{{ app.course_name }} | 状态：{{ statusText(app.status) }}
+          </span>
+          <button
+            v-if="app.status === 'pending'"
+            class="small-btn"
+            @click="cancelOverlap(app.course_id)"
+          >撤销</button>
+        </div>
+        <button @click="showOverlapDialog = false">关闭</button>
+      </div>
+    </div>
+
+    <!-- 退课确认弹窗 -->
+    <div v-if="showDropConfirm" class="conflict-dialog-mask">
+      <div class="conflict-dialog">
+        <div class="conflict-title">确认退课</div>
+        <div class="conflict-msg">确定要退选该课程吗？</div>
+        <div class="conflict-actions">
+          <button class="conflict-btn" @click="showDropConfirm = false">取消</button>
+          <button class="conflict-btn" style="background:#e74c3c;color:#fff;" @click="doDropCourse">确定退课</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -274,6 +318,13 @@ const courses = ref([])
 const courseMsg = ref('')
 const onlyShowSelected = ref(false)
 
+// 叠课相关变量
+const showConflictDialog = ref(false)
+const conflictCourseId = ref('')
+const showOverlapDialog = ref(false)
+const overlapApplications = ref([])
+const selectedCourseTimes = ref([])
+
 // 获取学生信息
 const fetchStudentInfo = async () => {
   try {
@@ -349,7 +400,65 @@ const changePassword = async () => {
   }
 }
 
-// 获取所有课程及选课状态
+// 解析课程时间字符串
+function parseCourseTime(timeStr) {
+  if (!timeStr) return [];
+  let result = [];
+  let parts = timeStr.split(':');
+  let weekPart = '', dayPart = '';
+  if (parts.length === 2) {
+    weekPart = parts[0].replace('周', '');
+    dayPart = parts[1];
+  } else {
+    dayPart = parts[0];
+  }
+  // 解析周数
+  let weekList = [];
+  if (weekPart) {
+    weekPart.split(',').forEach(seg => {
+      if (seg.includes('-')) {
+        const [start, end] = seg.split('-').map(Number);
+        for (let i = start; i <= end; i++) weekList.push(i);
+      } else if (/^\d+$/.test(seg)) {
+        weekList.push(Number(seg));
+      }
+    });
+  }
+  // 解析节次
+  dayPart.split(';').forEach(seg => {
+    seg = seg.trim();
+    if (!seg) return;
+    const m = seg.match(/^(\d+)\(([\d,]+)\)$/);
+    if (!m) return;
+    const day = Number(m[1]);
+    const periods = m[2].split(',').map(Number);
+    result.push({ day, periods, weeks: weekList });
+  });
+  return result;
+}
+
+// 检查时间冲突
+function hasTimeConflict(newTimeStr, selectedTimesArr) {
+  const newSlots = parseCourseTime(newTimeStr);
+  for (const { time } of selectedTimesArr) {
+    if (!time) continue;
+    const slots = parseCourseTime(time);
+    for (const slot1 of newSlots) {
+      for (const slot2 of slots) {
+        if (slot1.day === slot2.day) {
+          if (slot1.periods.some(p => slot2.periods.includes(p))) {
+            if (slot1.weeks.some(w => slot2.weeks.includes(w))) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// 获取所有课程及选课状态（重写，保存selectedCourseTimes）
 const fetchCourses = async () => {
   const params = {
     student_id: userId,
@@ -360,6 +469,7 @@ const fetchCourses = async () => {
   const res = await axios.get('http://localhost:5000/api/student/courses', { params })
   if (res.data.success) {
     courses.value = res.data.courses
+    selectedCourseTimes.value = res.data.selected_course_times || []
   }
 }
 
@@ -377,12 +487,18 @@ const getTeacherNames = (teachers) => {
   return teachers.map(t => t.name).join('，')
 }
 
-// 选课
+// 选课（重写，冲突弹窗）
 const selectCourse = async (course_id, item) => {
   const course = item || courses.value.find(c => c.course_id === course_id)
   if (course && course.numStudents >= course.maxStudents) {
     courseMsg.value = '人数已满，无法选课'
     setTimeout(() => { courseMsg.value = '' }, 1500)
+    return
+  }
+  // 冲突检测
+  if (course && hasTimeConflict(course.time, selectedCourseTimes.value)) {
+    conflictCourseId.value = course.course_id
+    showConflictDialog.value = true
     return
   }
   const res = await axios.post('http://localhost:5000/api/student/select_course', {
@@ -392,30 +508,50 @@ const selectCourse = async (course_id, item) => {
   if (res.data.success) {
     courseMsg.value = '选课成功'
     fetchCourses()
-    fetchTimetableData() // 新增：选课后刷新课表
+    fetchTimetableData()
   } else {
     courseMsg.value = res.data.message || '选课失败'
   }
   setTimeout(() => { courseMsg.value = '' }, 1500)
 }
 
-// 退课
-const dropCourse = async (course_id) => {
-  const res = await axios.post('http://localhost:5000/api/student/drop_course', {
+// 叠课弹窗相关
+const applyOverlap = async () => {
+  showConflictDialog.value = false
+  if (!conflictCourseId.value) return
+  await axios.post('http://localhost:5000/api/student/apply_overlap', {
+    student_id: userId,
+    course_id: conflictCourseId.value
+  })
+  courseMsg.value = '已提交叠课申请'
+  setTimeout(() => { courseMsg.value = '' }, 1500)
+  conflictCourseId.value = ''
+}
+
+// 打开叠课申请列表
+const openOverlapDialog = async () => {
+  const res = await axios.get('http://localhost:5000/api/student/overlap_applications', {
+    params: { student_id: userId }
+  })
+  if (res.data.success) overlapApplications.value = res.data.applications
+  showOverlapDialog.value = true
+}
+
+// 撤销叠课申请
+const cancelOverlap = async (course_id) => {
+  await axios.post('http://localhost:5000/api/student/cancel_overlap', {
     student_id: userId,
     course_id
   })
-  if (res.data.success) {
-    courseMsg.value = '退课成功'
-    fetchCourses()
-    fetchTimetableData() // 新增：退课后刷新课表
-  } else {
-    courseMsg.value = res.data.message || '退课失败'
-  }
-  setTimeout(() => { courseMsg.value = '' }, 1500)
+  openOverlapDialog()
 }
 
-// 课程表相关
+const statusText = (status) => ({
+  pending: '待处理',
+  approved: '已通过'
+}[status] || '')
+
+// 获取课程表相关
 const timetableTable = ref([])
 const timetableDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const hoveredCard = ref(null)
@@ -441,6 +577,35 @@ const fetchTimetableData = async () => {
 function logout() {
   localStorage.removeItem('user_id')
   router.push('/')
+}
+
+// 退课确认弹窗相关
+const showDropConfirm = ref(false)
+const dropCourseId = ref('')
+
+// 触发退课确认弹窗
+const confirmDropCourse = (course_id) => {
+  dropCourseId.value = course_id
+  showDropConfirm.value = true
+}
+
+// 真正执行退课
+const doDropCourse = async () => {
+  showDropConfirm.value = false
+  if (!dropCourseId.value) return
+  const res = await axios.post('http://localhost:5000/api/student/drop_course', {
+    student_id: userId,
+    course_id: dropCourseId.value
+  })
+  if (res.data.success) {
+    courseMsg.value = '退课成功'
+    fetchCourses()
+    fetchTimetableData()
+  } else {
+    courseMsg.value = res.data.message || '退课失败'
+  }
+  setTimeout(() => { courseMsg.value = '' }, 1500)
+  dropCourseId.value = ''
 }
 
 onMounted(() => {
@@ -933,5 +1098,75 @@ tr.section-divider td {
   padding: 0;
   height: 0;
   background: transparent;
+}
+.overlap-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  color: #555;
+  font-size: 16px;
+}
+.small-btn {
+  padding: 4px 14px;
+  font-size: 14px;
+  border-radius: 4px;
+  background: #ff7675;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  margin-left: 18px;
+  transition: background 0.2s;
+}
+.small-btn:hover {
+  background: #ff5252;
+}
+.conflict-dialog-mask, .dialog-mask {
+  position: fixed;
+  left: 0; top: 0; right: 0; bottom: 0;
+  background: rgba(44,62,80,0.25);
+  z-index: 3000;
+  display: flex; align-items: center; justify-content: center;
+}
+.conflict-dialog, .dialog {
+  background: #fff;
+  border-radius: 12px;
+  padding: 32px 40px 24px 40px;
+  box-shadow: 0 8px 32px rgba(44,62,80,0.18);
+  min-width: 320px;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.conflict-title {
+  font-size: 22px;
+  color: #e74c3c;
+  font-weight: bold;
+  margin-bottom: 18px;
+}
+.conflict-msg {
+  color: #232526;
+  font-size: 17px;
+  margin-bottom: 24px;
+}
+.conflict-actions {
+  display: flex;
+  gap: 24px;
+}
+.conflict-btn {
+  background: #e0e0e0;
+  color: #232526;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 28px;
+  font-size: 16px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+.conflict-btn:hover {
+  background: #5dade2;
+  color: #fff;
 }
 </style>

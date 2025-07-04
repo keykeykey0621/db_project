@@ -461,3 +461,57 @@ def upload_teacher_avatar():
             os.remove(old_path)
 
     return jsonify({'success': True, 'avatar': f'/assets/{teacher_id}/{avatar_filename}'})
+
+# 查询自己任教课程收到的叠课申请
+@teacher_bp.route('/api/teacher/overlap_applications', methods=['GET'])
+def get_teacher_overlap_applications():
+    teacher_id = request.args.get('teacher_id')
+    if not teacher_id:
+        return jsonify({'success': False, 'message': '缺少教师ID'}), 400
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor(dictionary=True)
+    # 查询自己任教的课程
+    cursor.execute("SELECT course_id FROM teacher_course WHERE teacher_id=%s", (teacher_id,))
+    course_ids = [row['course_id'] for row in cursor.fetchall()]
+    if not course_ids:
+        cursor.close()
+        conn.close()
+        return jsonify({'success': True, 'applications': []})
+    format_strings = ','.join(['%s'] * len(course_ids))
+    cursor.execute(f"""
+        SELECT oa.student_id, oa.course_id, oa.status, s.name as student_name, c.name as course_name
+        FROM overlap_application oa
+        JOIN student s ON oa.student_id = s.student_id
+        JOIN course c ON oa.course_id = c.course_id
+        WHERE oa.course_id IN ({format_strings}) AND oa.status='pending'
+    """, tuple(course_ids))
+    apps = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify({'success': True, 'applications': apps})
+
+# 处理叠课申请（同意：改状态并自动选课，拒绝：删除）
+@teacher_bp.route('/api/teacher/process_overlap', methods=['POST'])
+def process_overlap():
+    data = request.get_json()
+    student_id = data.get('student_id')
+    course_id = data.get('course_id')
+    action = data.get('action')  # 'approve' or 'reject'
+    if not student_id or not course_id or action not in ('approve', 'reject'):
+        return jsonify({'success': False, 'message': '缺少参数'}), 400
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor()
+    if action == 'approve':
+        # 1. 更新叠课申请状态
+        cursor.execute("UPDATE overlap_application SET status='approved' WHERE student_id=%s AND course_id=%s AND status='pending'", (student_id, course_id))
+        # 2. 添加选课记录（如果还没有）
+        cursor.execute("SELECT 1 FROM student_course WHERE student_id=%s AND course_id=%s", (student_id, course_id))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO student_course (student_id, course_id) VALUES (%s, %s)", (student_id, course_id))
+            cursor.execute("UPDATE course SET numStudents = numStudents + 1 WHERE course_id=%s", (course_id,))
+    else:  # reject
+        cursor.execute("DELETE FROM overlap_application WHERE student_id=%s AND course_id=%s AND status='pending'", (student_id, course_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({'success': True})

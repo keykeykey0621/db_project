@@ -58,6 +58,7 @@ def update_student_info():
     conn.close()
     return jsonify({'success': True, 'message': '信息更新成功'})
 
+# 获取课程及选课状态，并返回已选课程时间
 @student_bp.route('/api/student/courses', methods=['GET'])
 def get_courses_for_student():
     student_id = request.args.get('student_id')
@@ -99,9 +100,69 @@ def get_courses_for_student():
         """, (course['course_id'],))
         course['teachers'] = cursor.fetchall()
 
+    # 查询已选课程的时间（用于前端冲突检测）
+    cursor.execute("SELECT course_id, time FROM course WHERE course_id IN (SELECT course_id FROM student_course WHERE student_id=%s)", (student_id,))
+    selected_course_times = cursor.fetchall()
+
     cursor.close()
     conn.close()
-    return jsonify({'success': True, 'courses': courses})
+    return jsonify({'success': True, 'courses': courses, 'selected_course_times': selected_course_times})
+
+# 叠课申请
+@student_bp.route('/api/student/apply_overlap', methods=['POST'])
+def apply_overlap():
+    data = request.get_json()
+    student_id = data.get('student_id')
+    course_id = data.get('course_id')
+    if not student_id or not course_id:
+        return jsonify({'success': False, 'message': '缺少参数'}), 400
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM overlap_application WHERE student_id=%s AND course_id=%s", (student_id, course_id))
+    if cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return jsonify({'success': False, 'message': '已申请'})
+    cursor.execute("INSERT INTO overlap_application (student_id, course_id, status) VALUES (%s, %s, 'pending')", (student_id, course_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({'success': True})
+
+# 查询自己的叠课申请
+@student_bp.route('/api/student/overlap_applications', methods=['GET'])
+def get_student_overlap_applications():
+    student_id = request.args.get('student_id')
+    if not student_id:
+        return jsonify({'success': False, 'message': '缺少参数'}), 400
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT oa.*, c.name as course_name
+        FROM overlap_application oa
+        JOIN course c ON oa.course_id = c.course_id
+        WHERE oa.student_id=%s
+    """, (student_id,))
+    apps = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify({'success': True, 'applications': apps})
+
+# 撤销叠课申请（直接删除）
+@student_bp.route('/api/student/cancel_overlap', methods=['POST'])
+def cancel_overlap():
+    data = request.get_json()
+    student_id = data.get('student_id')
+    course_id = data.get('course_id')
+    if not student_id or not course_id:
+        return jsonify({'success': False, 'message': '缺少参数'}), 400
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM overlap_application WHERE student_id=%s AND course_id=%s AND status='pending'", (student_id, course_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return jsonify({'success': True})
 
 @student_bp.route('/api/student/select_course', methods=['POST'])
 def select_course():
@@ -158,6 +219,8 @@ def drop_course():
     cursor.execute("DELETE FROM student_course WHERE student_id=%s AND course_id=%s", (student_id, course_id))
     # numStudents减一，防止负数
     cursor.execute("UPDATE course SET numStudents = GREATEST(numStudents - 1, 0) WHERE course_id=%s", (course_id,))
+    # 删除叠课记录
+    cursor.execute("DELETE FROM overlap_application WHERE student_id=%s AND course_id=%s", (student_id, course_id))
     conn.commit()
     cursor.close()
     conn.close()
