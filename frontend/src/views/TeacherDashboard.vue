@@ -104,7 +104,9 @@
               <h3>叠课申请处理</h3>
               <div v-for="app in overlapApplications" :key="app.student_id + '-' + app.course_id" class="overlap-row">
                 <span>
-                  学生：{{ app.student_name }} | 课程：{{ app.course_name }}
+                  <span class="student-name">学生：{{ app.student_name }}</span>
+                  <span>|</span>
+                  <span class="course-name">课程：{{ app.course_name }}</span>
                 </span>
                 <span>
                   <button class="small-btn" @click="processOverlap(app.student_id, app.course_id, 'approve')">同意</button>
@@ -407,7 +409,7 @@
               <div>确定要将学生 <b>{{ removeStudentId }}</b> 移出班级吗？</div>
               <div class="dialog-actions">
                 <button @click="removeStudent">确认</button>
-                <button @click="showRemoveStudentDialog.value = false">取消</button>
+                <button @click="showRemoveStudentDialog = false">取消</button>
               </div>
               <div v-if="removeStudentMsg" class="dialog-msg">{{ removeStudentMsg }}</div>
             </div>
@@ -1552,5 +1554,15 @@ const processOverlap = async (student_id, course_id, action) => {
 .small-btn:hover {
   background: #ff5252;
 }
-
+/* 叠课申请处理弹窗中学生和课程名高亮 */
+.overlap-row .student-name {
+  color: #5dade2;
+  font-weight: bold;
+  margin-right: 8px;
+}
+.overlap-row .course-name {
+  color: #5dade2;
+  font-weight: bold;
+  margin-left: 8px;
+}
 </style>

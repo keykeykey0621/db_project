@@ -1236,4 +1236,12 @@ tr.section-divider td {
 .community-dialog-close:hover {
   color: #e74c3c;
 }
+.del-btn {
+  color: #e74c3c !important;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
 </style>
