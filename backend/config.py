@@ -1,5 +1,4 @@
 #config.py
-#存储数据库的相关配置
 
 db_config = {
     'host': 'localhost',
